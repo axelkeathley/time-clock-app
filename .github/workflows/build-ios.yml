@@ -30,16 +30,6 @@ jobs:
       - name: Install CocoaPods dependencies
         run: cd ios && pod install
 
-      - name: Bundle JavaScript (Metro)
-        run: |
-          echo "Node: $(node --version)"
-          node node_modules/.bin/react-native bundle \
-            --entry-file index.ts \
-            --bundle-output "$RUNNER_TEMP/main.jsbundle" \
-            --assets-dest "$RUNNER_TEMP/assets" \
-            --platform ios \
-            --dev false
-
       - name: Find Xcode workspace and scheme
         id: xcode
         run: |
