@@ -8,8 +8,8 @@ on:
 
 jobs:
   build:
-    name: Build iOS with EAS
-    runs-on: ubuntu-latest   # EAS does the actual Mac compilation in the cloud
+    name: Build unsigned iOS IPA (no Apple account needed)
+    runs-on: macos-latest   # real Mac in the cloud, free on GitHub
 
     steps:
       - name: Checkout code
@@ -24,11 +24,46 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set up EAS CLI
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean
 
-      - name: Build iOS IPA
-        run: eas build --platform ios --profile preview --non-interactive
+      - name: Install CocoaPods dependencies
+        run: cd ios && pod install
+
+      - name: Find Xcode workspace and scheme
+        id: xcode
+        run: |
+          WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+          echo "Using workspace: $WORKSPACE, scheme: $SCHEME"
+
+      - name: Build iOS archive (unsigned — AltStore will sign it)
+        run: |
+          xcodebuild archive \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/TimeClock.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package as IPA
+        run: |
+          APP_DIR="$RUNNER_TEMP/TimeClock.xcarchive/Products/Applications"
+          APP_NAME=$(ls "$APP_DIR" | head -1)
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -r "$APP_DIR/$APP_NAME" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa"
+          zip -r "TimeClock.ipa" Payload
+          echo "IPA size: $(du -h TimeClock.ipa | cut -f1)"
+
+      - name: Upload IPA as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeClock-iOS-build-${{ github.run_number }}
+          path: ${{ runner.temp }}/ipa/TimeClock.ipa
+          retention-days: 30
