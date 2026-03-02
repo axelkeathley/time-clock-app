@@ -42,6 +42,7 @@ jobs:
       - name: Build iOS archive (unsigned)
         run: |
           set -o pipefail
+          export NODE_BINARY=$(which node)
           xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
