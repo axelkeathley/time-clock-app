@@ -9,16 +9,11 @@ on:
 jobs:
   build:
     name: Build unsigned iOS IPA (no Apple account needed)
-    runs-on: macos-14   # Xcode 15.4 available here — compatible with Expo SDK 55
+    runs-on: macos-latest   # Xcode 16 — required by React Native 0.83
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Select Xcode 15.4 (Expo SDK 55 is not yet compatible with Xcode 16 Swift 6)
-        run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-          xcodebuild -version
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,6 +27,13 @@ jobs:
       - name: Generate native iOS project
         run: npx expo prebuild --platform ios --clean
 
+      - name: Patch Podfile — silence Swift 6 strict concurrency errors
+        working-directory: ios
+        run: |
+          # printf keeps everything YAML-indented (heredocs can't be indented in YAML).
+          # CocoaPods supports multiple post_install blocks, so this runs after Expo's own.
+          printf '\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings["SWIFT_STRICT_CONCURRENCY"] = "minimal"\n    end\n  end\nend\n' >> Podfile
+
       - name: Install CocoaPods dependencies
         run: cd ios && pod install
 
@@ -42,7 +44,7 @@ jobs:
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Using workspace: $WORKSPACE, scheme: $SCHEME"
+          echo "Workspace: $WORKSPACE   Scheme: $SCHEME"
 
       - name: Build iOS archive (unsigned)
         run: |
