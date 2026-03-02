@@ -59,11 +59,14 @@ jobs:
       - name: Show build errors (only runs on failure)
         if: failure()
         run: |
-          echo "====== ERRORS FROM BUILD LOG ======"
-          grep -E "error:|BUILD FAILED" "$RUNNER_TEMP/xbuild.log" | head -50 || true
+          echo "====== BUNDLE SCRIPT OUTPUT ======"
+          grep -A 100 "PhaseScriptExecution Bundle" "$RUNNER_TEMP/xbuild.log" | head -120 || true
           echo ""
-          echo "====== LAST 80 LINES OF LOG ======"
-          tail -80 "$RUNNER_TEMP/xbuild.log" || true
+          echo "====== ALL ERROR LINES ======"
+          grep -iE "error|unable to resolve|cannot find|module not found|SyntaxError|FAILED" "$RUNNER_TEMP/xbuild.log" | grep -v "note:" | head -80 || true
+          echo ""
+          echo "====== LAST 50 LINES OF LOG ======"
+          tail -50 "$RUNNER_TEMP/xbuild.log" || true
 
       - name: Package as IPA
         run: |
