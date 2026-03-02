@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build unsigned iOS IPA (no Apple account needed)
-    runs-on: macos-latest   # Xcode 16 — required by React Native 0.83
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -27,12 +27,43 @@ jobs:
       - name: Generate native iOS project
         run: npx expo prebuild --platform ios --clean
 
-      - name: Patch Podfile — silence Swift 6 strict concurrency errors
+      - name: Patch Podfile — inject Swift 6 workaround into post_install block
         working-directory: ios
         run: |
-          # printf keeps everything YAML-indented (heredocs can't be indented in YAML).
-          # CocoaPods supports multiple post_install blocks, so this runs after Expo's own.
-          printf '\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings["SWIFT_STRICT_CONCURRENCY"] = "minimal"\n    end\n  end\nend\n' >> Podfile
+          python3 - <<'PYEOF'
+          content = open('Podfile').read()
+          lines = content.split('\n')
+          in_post = False
+          depth = 0
+          idx = -1
+          for i, line in enumerate(lines):
+              s = line.strip()
+              if 'post_install do' in s and not s.startswith('#'):
+                  in_post = True
+                  depth = 1
+              elif in_post:
+                  if ('do |' in s or s.endswith(' do')) and not s.startswith('#'):
+                      depth += 1
+                  if s == 'end':
+                      depth -= 1
+                      if depth == 0:
+                          idx = i
+                          break
+          if idx < 0:
+              print('ERROR: no post_install end found in Podfile')
+              import sys; sys.exit(1)
+          patch = [
+              '  # Xcode 16 Swift 6 strict concurrency workaround',
+              '  installer.pods_project.targets.each do |target|',
+              '    target.build_configurations.each do |config|',
+              '      config.build_settings["SWIFT_STRICT_CONCURRENCY"] = "minimal"',
+              '    end',
+              '  end',
+          ]
+          lines[idx:idx] = patch
+          open('Podfile', 'w').write('\n'.join(lines))
+          print('Podfile patched, inserted before line', idx)
+          PYEOF
 
       - name: Install CocoaPods dependencies
         run: cd ios && pod install
