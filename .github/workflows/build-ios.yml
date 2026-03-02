@@ -30,6 +30,39 @@ jobs:
       - name: Install CocoaPods dependencies
         run: cd ios && pod install
 
+      - name: Bundle JavaScript and compile Hermes bytecode
+        run: |
+          BUNDLE_OUT="$RUNNER_TEMP/main.jsbundle"
+          ASSETS_OUT="$RUNNER_TEMP/assets"
+          mkdir -p "$ASSETS_OUT"
+
+          echo "=== Metro bundler ==="
+          node node_modules/.bin/react-native bundle \
+            --entry-file index.ts \
+            --platform ios \
+            --dev false \
+            --bundle-output "$BUNDLE_OUT" \
+            --assets-dest "$ASSETS_OUT" \
+            --reset-cache
+          echo "Bundle size: $(wc -c < "$BUNDLE_OUT") bytes"
+
+          echo "=== Hermes bytecode compilation ==="
+          # Prefer hermesc that ships with the installed pods (matches the Hermes runtime in the app)
+          HERMESC=$(find ios/Pods -name "hermesc" -type f 2>/dev/null | head -1)
+          # Fallback: hermesc bundled with react-native
+          if [ -z "$HERMESC" ]; then
+            HERMESC=$(find node_modules/react-native/sdks/hermesc -name "hermesc" -type f 2>/dev/null | head -1)
+          fi
+
+          if [ -n "$HERMESC" ] && [ -f "$HERMESC" ]; then
+            echo "Found hermesc: $HERMESC"
+            "$HERMESC" -emit-binary -out "${BUNDLE_OUT}.hbc" "$BUNDLE_OUT"
+            mv "${BUNDLE_OUT}.hbc" "$BUNDLE_OUT"
+            echo "HBC size: $(wc -c < "$BUNDLE_OUT") bytes"
+          else
+            echo "hermesc not found — keeping raw JS bundle"
+          fi
+
       - name: Find Xcode workspace and scheme
         id: xcode
         run: |
@@ -39,7 +72,7 @@ jobs:
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
           echo "Workspace: $WORKSPACE   Scheme: $SCHEME"
 
-      - name: Build iOS archive (unsigned)
+      - name: Build iOS archive (unsigned, JS bundling skipped)
         run: |
           set -o pipefail
           xcodebuild archive \
@@ -53,8 +86,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             SKIP_INSTALL=NO \
+            SKIP_BUNDLING=1 \
             NODE_BINARY="$(which node)" \
             2>&1 | tee "$RUNNER_TEMP/xbuild.log"
+
+      - name: Inject JS bundle into archive
+        run: |
+          APP_DIR="$RUNNER_TEMP/TimeClock.xcarchive/Products/Applications"
+          APP_NAME=$(ls "$APP_DIR" | head -1)
+          APP_PATH="$APP_DIR/$APP_NAME"
+          echo "Injecting bundle into: $APP_PATH"
+          cp "$RUNNER_TEMP/main.jsbundle" "$APP_PATH/main.jsbundle"
+          if [ "$(ls -A "$RUNNER_TEMP/assets" 2>/dev/null)" ]; then
+            cp -r "$RUNNER_TEMP/assets/." "$APP_PATH/"
+          fi
+          echo "Done. App contents:"
+          ls "$APP_PATH" | grep -E "(jsbundle|assets)" || echo "(no bundle files listed)"
 
       - name: Upload full build log on failure
         if: failure()
