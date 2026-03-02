@@ -56,14 +56,13 @@ jobs:
             NODE_BINARY="$(which node)" \
             2>&1 | tee "$RUNNER_TEMP/xbuild.log"
 
-      - name: Show build errors (only runs on failure)
+      - name: Upload full build log on failure
         if: failure()
-        run: |
-          echo "====== ALL ERROR LINES ======"
-          grep -iE "error|unable to resolve|cannot find|module not found|SyntaxError|FAILED" "$RUNNER_TEMP/xbuild.log" | grep -v "note:" | head -80 || true
-          echo ""
-          echo "====== LAST 50 LINES OF LOG ======"
-          tail -50 "$RUNNER_TEMP/xbuild.log" || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: xbuild-log-${{ github.run_number }}
+          path: ${{ runner.temp }}/xbuild.log
+          retention-days: 7
 
       - name: Package as IPA
         run: |
