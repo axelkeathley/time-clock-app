@@ -30,6 +30,16 @@ jobs:
       - name: Install CocoaPods dependencies
         run: cd ios && pod install
 
+      - name: Bundle JavaScript (Metro)
+        run: |
+          echo "Node: $(node --version)"
+          node node_modules/.bin/react-native bundle \
+            --entry-file index.ts \
+            --bundle-output "$RUNNER_TEMP/main.jsbundle" \
+            --assets-dest "$RUNNER_TEMP/assets" \
+            --platform ios \
+            --dev false
+
       - name: Find Xcode workspace and scheme
         id: xcode
         run: |
@@ -43,6 +53,7 @@ jobs:
         run: |
           set -o pipefail
           export NODE_BINARY=$(which node)
+          export SKIP_BUNDLING=1
           xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
@@ -54,14 +65,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             SKIP_INSTALL=NO \
+            SKIP_BUNDLING=1 \
+            BUNDLE_FILE="$RUNNER_TEMP/main.jsbundle" \
+            BUNDLE_ASSETS_DIR="$RUNNER_TEMP/assets" \
             2>&1 | tee "$RUNNER_TEMP/xbuild.log"
 
       - name: Show build errors (only runs on failure)
         if: failure()
         run: |
-          echo "====== BUNDLE SCRIPT OUTPUT ======"
-          grep -A 100 "PhaseScriptExecution Bundle" "$RUNNER_TEMP/xbuild.log" | head -120 || true
-          echo ""
           echo "====== ALL ERROR LINES ======"
           grep -iE "error|unable to resolve|cannot find|module not found|SyntaxError|FAILED" "$RUNNER_TEMP/xbuild.log" | grep -v "note:" | head -80 || true
           echo ""
