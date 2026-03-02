@@ -1,19 +1,16 @@
 {
-  "cli": {
+  "cli": 
+  {
     "version": ">= 12.0.0"
   },
-  "build": {
+  "build": 
+  {
     "preview": {
       "distribution": "internal",
-      "ios": {
+      "ios": 
+      {
         "buildConfiguration": "Release",
         "simulator": false
-      }
-    },
-    "simulator": {
-      "distribution": "simulator",
-      "ios": {
-        "simulator": true
       }
     }
   }
