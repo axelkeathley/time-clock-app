@@ -4,12 +4,12 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:   # lets you trigger a build manually from GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build unsigned iOS IPA (no Apple account needed)
-    runs-on: macos-latest   # real Mac in the cloud, free on GitHub
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -37,19 +37,33 @@ jobs:
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Using workspace: $WORKSPACE, scheme: $SCHEME"
+          echo "Using workspace: $WORKSPACE"
+          echo "Using scheme:    $SCHEME"
 
-      - name: Build iOS archive (unsigned — AltStore will sign it)
+      - name: Build iOS archive (unsigned)
         run: |
+          set -o pipefail
           xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
             -archivePath "$RUNNER_TEMP/TimeClock.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            SKIP_INSTALL=NO \
+            2>&1 | tee "$RUNNER_TEMP/xbuild.log"
+
+      - name: Show build errors (only runs on failure)
+        if: failure()
+        run: |
+          echo "====== ERRORS FROM BUILD LOG ======"
+          grep -E "error:|BUILD FAILED" "$RUNNER_TEMP/xbuild.log" | head -50 || true
+          echo ""
+          echo "====== LAST 80 LINES OF LOG ======"
+          tail -80 "$RUNNER_TEMP/xbuild.log" || true
 
       - name: Package as IPA
         run: |
