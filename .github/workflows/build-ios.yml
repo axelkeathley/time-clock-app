@@ -9,11 +9,16 @@ on:
 jobs:
   build:
     name: Build unsigned iOS IPA (no Apple account needed)
-    runs-on: macos-latest
+    runs-on: macos-14   # Xcode 15.4 available here — compatible with Expo SDK 55
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Select Xcode 15.4 (Expo SDK 55 is not yet compatible with Xcode 16 Swift 6)
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -37,8 +42,7 @@ jobs:
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Using workspace: $WORKSPACE"
-          echo "Using scheme:    $SCHEME"
+          echo "Using workspace: $WORKSPACE, scheme: $SCHEME"
 
       - name: Build iOS archive (unsigned)
         run: |
