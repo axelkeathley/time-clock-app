@@ -11,6 +11,20 @@ export interface TimeEntry {
   note?: string;
 }
 
+export interface Deduction {
+  id: string;
+  name: string;
+  amount: number;
+  occurrence: 'every-paycheck' | 'first-of-month';
+}
+
+export interface Reimbursement {
+  id: string;
+  name: string;
+  amount: number;
+  occurrence: 'every-paycheck' | 'first-of-month';
+}
+
 export interface Settings {
   hourlyRate: number;
   payPeriodType: 'weekly' | 'biweekly';
@@ -22,6 +36,9 @@ export interface Settings {
   workEndTime: string;             // "HH:MM"
   workDays: number[];              // 0=Sun … 6=Sat
   notificationsEnabled: boolean;
+  deductions: Deduction[];         // recurring paycheck deductions
+  reimbursements: Reimbursement[]; // recurring reimbursements
+  incomeGoal: number;              // weekly gross income goal (0 = disabled)
 }
 
 export interface PaySummary {
@@ -31,8 +48,10 @@ export interface PaySummary {
   regularPay: number;
   overtimePay: number;
   grossPay: number;
-  totalPay: number;    // alias for grossPay (backward compat)
+  totalPay: number;            // alias for grossPay (backward compat)
   taxAmount: number;
+  deductionsAmount: number;
+  reimbursementsAmount: number;
   netPay: number;
 }
 

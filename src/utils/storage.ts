@@ -16,6 +16,9 @@ export const DEFAULT_SETTINGS: Settings = {
   workEndTime: '17:00',
   workDays: [1, 2, 3, 4, 5],
   notificationsEnabled: false,
+  deductions: [],
+  reimbursements: [],
+  incomeGoal: 0,
 };
 
 // ── Entries ───────────────────────────────────────────────────────────────────

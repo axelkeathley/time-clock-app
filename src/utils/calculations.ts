@@ -1,4 +1,4 @@
-import { TimeEntry, PaySummary, Settings } from './types';
+import { TimeEntry, PaySummary, Settings, Deduction, Reimbursement } from './types';
 
 // ── Duration helpers ──────────────────────────────────────────────────────────
 
@@ -87,13 +87,49 @@ export function calculateTotalHours(entries: TimeEntry[]): number {
   );
 }
 
+// ── Deductions / Reimbursements helpers ───────────────────────────────────────
+
+// A "first of month" item applies when the period start date falls within the
+// first (weeksPerPeriod * 7) days of the calendar month.
+function isFirstPeriodOfMonth(periodStart: Date, weeksPerPeriod: number): boolean {
+  return periodStart.getDate() <= weeksPerPeriod * 7;
+}
+
+export function getPeriodDeductionsAmount(
+  deductions: Deduction[],
+  periodStart: Date,
+  weeksPerPeriod: number
+): number {
+  const firstOfMonth = isFirstPeriodOfMonth(periodStart, weeksPerPeriod);
+  return deductions.reduce((sum, d) => {
+    if (d.occurrence === 'every-paycheck') return sum + d.amount;
+    if (d.occurrence === 'first-of-month' && firstOfMonth) return sum + d.amount;
+    return sum;
+  }, 0);
+}
+
+export function getPeriodReimbursementsAmount(
+  reimbursements: Reimbursement[],
+  periodStart: Date,
+  weeksPerPeriod: number
+): number {
+  const firstOfMonth = isFirstPeriodOfMonth(periodStart, weeksPerPeriod);
+  return reimbursements.reduce((sum, r) => {
+    if (r.occurrence === 'every-paycheck') return sum + r.amount;
+    if (r.occurrence === 'first-of-month' && firstOfMonth) return sum + r.amount;
+    return sum;
+  }, 0);
+}
+
 // ── Pay + tax calculation ─────────────────────────────────────────────────────
 
 export function calculatePay(
   totalHours: number,
   hourlyRate: number,
   overtimeThreshold = 40,
-  taxRates?: Pick<Settings, 'federalTaxRate' | 'stateTaxRate' | 'ficaTaxRate'>
+  taxRates?: Pick<Settings, 'federalTaxRate' | 'stateTaxRate' | 'ficaTaxRate'>,
+  deductionsAmount = 0,
+  reimbursementsAmount = 0,
 ): PaySummary {
   const regularHours = Math.min(totalHours, overtimeThreshold);
   const overtimeHours = Math.max(0, totalHours - overtimeThreshold);
@@ -105,7 +141,7 @@ export function calculatePay(
     ? taxRates.federalTaxRate + taxRates.stateTaxRate + taxRates.ficaTaxRate
     : 0;
   const taxAmount = grossPay * (totalTaxPct / 100);
-  const netPay = grossPay - taxAmount;
+  const netPay = grossPay - taxAmount - deductionsAmount + reimbursementsAmount;
 
   return {
     regularHours,
@@ -116,6 +152,8 @@ export function calculatePay(
     grossPay,
     totalPay: grossPay,
     taxAmount,
+    deductionsAmount,
+    reimbursementsAmount,
     netPay,
   };
 }

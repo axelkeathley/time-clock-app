@@ -1,13 +1,13 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Alert, ScrollView, Switch,
+  Alert, ScrollView, Switch, Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loadSettings, saveSettings, clearAllData, DEFAULT_SETTINGS } from '../utils/storage';
 import { scheduleWorkNotifications } from '../utils/notifications';
-import { Settings } from '../utils/types';
+import { Settings, Deduction, Reimbursement } from '../utils/types';
 
 const C = {
   bg: '#0F172A', card: '#1E293B', primary: '#3B82F6',
@@ -69,7 +69,22 @@ export default function SettingsScreen() {
   const [workEnd, setWorkEnd] = useState(DEFAULT_SETTINGS.workEndTime);
   const [workDays, setWorkDays] = useState<number[]>(DEFAULT_SETTINGS.workDays);
   const [notificationsEnabled, setNotificationsEnabled] = useState(DEFAULT_SETTINGS.notificationsEnabled);
+  const [deductions, setDeductions] = useState<Deduction[]>([]);
+  const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
+  const [incomeGoal, setIncomeGoal] = useState('0');
   const [saved, setSaved] = useState(false);
+
+  // Add deduction modal state
+  const [addDedModal, setAddDedModal] = useState(false);
+  const [newDedName, setNewDedName] = useState('');
+  const [newDedAmount, setNewDedAmount] = useState('');
+  const [newDedOccurrence, setNewDedOccurrence] = useState<'every-paycheck' | 'first-of-month'>('every-paycheck');
+
+  // Add reimbursement modal state
+  const [addReimbModal, setAddReimbModal] = useState(false);
+  const [newReimbName, setNewReimbName] = useState('');
+  const [newReimbAmount, setNewReimbAmount] = useState('');
+  const [newReimbOccurrence, setNewReimbOccurrence] = useState<'every-paycheck' | 'first-of-month'>('first-of-month');
 
   useFocusEffect(useCallback(() => {
     loadSettings().then(s => {
@@ -83,6 +98,9 @@ export default function SettingsScreen() {
       setWorkEnd(s.workEndTime);
       setWorkDays(s.workDays);
       setNotificationsEnabled(s.notificationsEnabled);
+      setDeductions(s.deductions ?? []);
+      setReimbursements(s.reimbursements ?? []);
+      setIncomeGoal((s.incomeGoal ?? 0).toString());
       setSaved(false);
     });
   }, []));
@@ -91,6 +109,38 @@ export default function SettingsScreen() {
     setWorkDays(prev =>
       prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
     );
+  }
+
+  function addDeduction() {
+    const amt = parseFloat(newDedAmount);
+    if (!newDedName.trim() || isNaN(amt) || amt <= 0) {
+      Alert.alert('Invalid', 'Enter a name and a valid amount.');
+      return;
+    }
+    setDeductions(prev => [...prev, {
+      id: Date.now().toString(),
+      name: newDedName.trim(),
+      amount: amt,
+      occurrence: newDedOccurrence,
+    }]);
+    setNewDedName(''); setNewDedAmount(''); setNewDedOccurrence('every-paycheck');
+    setAddDedModal(false);
+  }
+
+  function addReimbursement() {
+    const amt = parseFloat(newReimbAmount);
+    if (!newReimbName.trim() || isNaN(amt) || amt <= 0) {
+      Alert.alert('Invalid', 'Enter a name and a valid amount.');
+      return;
+    }
+    setReimbursements(prev => [...prev, {
+      id: Date.now().toString(),
+      name: newReimbName.trim(),
+      amount: amt,
+      occurrence: newReimbOccurrence,
+    }]);
+    setNewReimbName(''); setNewReimbAmount(''); setNewReimbOccurrence('first-of-month');
+    setAddReimbModal(false);
   }
 
   async function handleSave() {
@@ -110,6 +160,9 @@ export default function SettingsScreen() {
       workEndTime: workEnd,
       workDays,
       notificationsEnabled,
+      deductions,
+      reimbursements,
+      incomeGoal: parseFloat(incomeGoal) || 0,
     };
     await saveSettings(s);
     await scheduleWorkNotifications(s);
@@ -137,6 +190,9 @@ export default function SettingsScreen() {
             setWorkEnd(DEFAULT_SETTINGS.workEndTime);
             setWorkDays(DEFAULT_SETTINGS.workDays);
             setNotificationsEnabled(false);
+            setDeductions([]);
+            setReimbursements([]);
+            setIncomeGoal('0');
           },
         },
       ]
@@ -157,7 +213,10 @@ export default function SettingsScreen() {
             keyboardType="decimal-pad" prefix="$" suffix="/hr" />
           <Field label="OT Threshold" value={overtimeThreshold} onChange={setOvertimeThreshold}
             keyboardType="decimal-pad" suffix="hrs/wk" />
-          <Text style={s.cardLabel}>PAY PERIOD</Text>
+          <Field label="Weekly Income Goal" value={incomeGoal} onChange={setIncomeGoal}
+            keyboardType="decimal-pad" prefix="$" suffix="/wk" />
+          <Text style={s.hint}>Set to 0 to disable goal tracking on the Weekly tab.</Text>
+          <Text style={[s.cardLabel, { marginTop: 12 }]}>PAY PERIOD</Text>
           <View style={s.segment}>
             {(['weekly', 'biweekly'] as const).map(type => (
               <TouchableOpacity key={type}
@@ -183,6 +242,56 @@ export default function SettingsScreen() {
           <Text style={s.hint}>
             Total: {totalTax.toFixed(2)}% · Net pay = Gross × {(1 - totalTax / 100).toFixed(4)}
           </Text>
+        </View>
+
+        {/* Deductions */}
+        <View style={s.card}>
+          <Text style={s.sectionLabel}>DEDUCTIONS</Text>
+          <Text style={s.hint}>Subtracted from your paycheck (health insurance, 401k, union dues, etc.)</Text>
+          {deductions.length === 0 && (
+            <Text style={[s.hint, { marginTop: 10, fontStyle: 'italic' }]}>No deductions added.</Text>
+          )}
+          {deductions.map(d => (
+            <View key={d.id} style={s.itemRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.itemName}>{d.name}</Text>
+                <Text style={s.itemSub}>
+                  ${d.amount.toFixed(2)} · {d.occurrence === 'every-paycheck' ? 'every paycheck' : 'first paycheck of month'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setDeductions(prev => prev.filter(x => x.id !== d.id))} style={s.removeBtn}>
+                <Text style={s.removeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity style={s.addBtn} onPress={() => setAddDedModal(true)}>
+            <Text style={s.addBtnText}>+ Add Deduction</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Reimbursements */}
+        <View style={s.card}>
+          <Text style={s.sectionLabel}>REIMBURSEMENTS</Text>
+          <Text style={s.hint}>Added to your paycheck (phone bill, mileage, uniform, etc.)</Text>
+          {reimbursements.length === 0 && (
+            <Text style={[s.hint, { marginTop: 10, fontStyle: 'italic' }]}>No reimbursements added.</Text>
+          )}
+          {reimbursements.map(r => (
+            <View key={r.id} style={s.itemRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.itemName}>{r.name}</Text>
+                <Text style={s.itemSub}>
+                  ${r.amount.toFixed(2)} · {r.occurrence === 'every-paycheck' ? 'every paycheck' : 'first paycheck of month'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setReimbursements(prev => prev.filter(x => x.id !== r.id))} style={s.removeBtn}>
+                <Text style={s.removeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity style={s.addBtn} onPress={() => setAddReimbModal(true)}>
+            <Text style={s.addBtnText}>+ Add Reimbursement</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Work Schedule */}
@@ -237,6 +346,104 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Add Deduction Modal */}
+      <Modal visible={addDedModal} transparent animationType="fade">
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Add Deduction</Text>
+            <TextInput
+              style={s.modalInput}
+              value={newDedName}
+              onChangeText={setNewDedName}
+              placeholder="Name (e.g. Health Insurance, 401k)"
+              placeholderTextColor={C.muted}
+              autoFocus
+            />
+            <View style={s.amtRow}>
+              <Text style={s.dollar}>$</Text>
+              <TextInput
+                style={s.amtInput}
+                value={newDedAmount}
+                onChangeText={setNewDedAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={C.muted}
+                selectTextOnFocus
+              />
+            </View>
+            <Text style={[s.hint, { marginBottom: 8 }]}>WHEN TO APPLY</Text>
+            <View style={s.segment}>
+              {(['every-paycheck', 'first-of-month'] as const).map(o => (
+                <TouchableOpacity key={o}
+                  style={[s.segBtn, newDedOccurrence === o && s.segBtnActive]}
+                  onPress={() => setNewDedOccurrence(o)}>
+                  <Text style={[s.segText, { fontSize: 12 }, newDedOccurrence === o && s.segTextActive]}>
+                    {o === 'every-paycheck' ? 'Every Paycheck' : 'First of Month'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => setAddDedModal(false)}>
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modalConfirm} onPress={addDeduction}>
+                <Text style={s.modalConfirmText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Reimbursement Modal */}
+      <Modal visible={addReimbModal} transparent animationType="fade">
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Add Reimbursement</Text>
+            <TextInput
+              style={s.modalInput}
+              value={newReimbName}
+              onChangeText={setNewReimbName}
+              placeholder="Name (e.g. Phone Bill, Mileage)"
+              placeholderTextColor={C.muted}
+              autoFocus
+            />
+            <View style={s.amtRow}>
+              <Text style={s.dollar}>$</Text>
+              <TextInput
+                style={s.amtInput}
+                value={newReimbAmount}
+                onChangeText={setNewReimbAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={C.muted}
+                selectTextOnFocus
+              />
+            </View>
+            <Text style={[s.hint, { marginBottom: 8 }]}>WHEN TO APPLY</Text>
+            <View style={s.segment}>
+              {(['every-paycheck', 'first-of-month'] as const).map(o => (
+                <TouchableOpacity key={o}
+                  style={[s.segBtn, newReimbOccurrence === o && s.segBtnActive]}
+                  onPress={() => setNewReimbOccurrence(o)}>
+                  <Text style={[s.segText, { fontSize: 12 }, newReimbOccurrence === o && s.segTextActive]}>
+                    {o === 'every-paycheck' ? 'Every Paycheck' : 'First of Month'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => setAddReimbModal(false)}>
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.modalConfirm, { backgroundColor: C.green }]} onPress={addReimbursement}>
+                <Text style={s.modalConfirmText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -269,4 +476,31 @@ const s = StyleSheet.create({
   saveBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   dangerBtn: { borderWidth: 1, borderColor: C.red, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 14 },
   dangerBtnText: { color: C.red, fontSize: 15, fontWeight: '600' },
+  // Lists
+  itemRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  itemName: { color: C.text, fontSize: 14, fontWeight: '600' },
+  itemSub: { color: C.muted, fontSize: 12, marginTop: 2 },
+  removeBtn: { padding: 8 },
+  removeText: { color: C.red, fontSize: 18, fontWeight: '700' },
+  addBtn: { marginTop: 14, borderWidth: 1, borderColor: C.primary, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  addBtnText: { color: C.primary, fontSize: 14, fontWeight: '600' },
+  // Modals
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { backgroundColor: C.card, borderRadius: 20, padding: 24, width: '100%', borderWidth: 1, borderColor: C.border },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: C.text, marginBottom: 14 },
+  modalInput: {
+    backgroundColor: C.bg, borderRadius: 10, padding: 12, color: C.text,
+    fontSize: 15, borderWidth: 1, borderColor: C.border, marginBottom: 12,
+  },
+  amtRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  dollar: { fontSize: 28, color: C.text, marginRight: 4 },
+  amtInput: { flex: 1, fontSize: 28, fontWeight: '700', color: C.text, backgroundColor: C.bg, borderRadius: 8, padding: 8 },
+  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  modalCancel: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  modalCancelText: { color: C.muted, fontSize: 16, fontWeight: '600' },
+  modalConfirm: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: C.primary },
+  modalConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

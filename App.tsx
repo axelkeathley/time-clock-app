@@ -7,16 +7,18 @@ import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from './src/screens/HomeScreen';
 import WeeklyScreen from './src/screens/WeeklyScreen';
+import CalendarScreen from './src/screens/CalendarScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 
 const ICON_MAP: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
-  Home:     ['time',     'time-outline'],
-  Weekly:   ['calendar', 'calendar-outline'],
-  History:  ['receipt',  'receipt-outline'],
-  Settings: ['settings', 'settings-outline'],
+  Home:     ['time',          'time-outline'],
+  Weekly:   ['bar-chart',     'bar-chart-outline'],
+  Calendar: ['calendar',      'calendar-outline'],
+  History:  ['receipt',       'receipt-outline'],
+  Settings: ['settings',      'settings-outline'],
 };
 
 export default function App() {
@@ -41,6 +43,7 @@ export default function App() {
         >
           <Tab.Screen name="Home" component={HomeScreen} />
           <Tab.Screen name="Weekly" component={WeeklyScreen} />
+          <Tab.Screen name="Calendar" component={CalendarScreen} />
           <Tab.Screen name="History" component={HistoryScreen} />
           <Tab.Screen name="Settings" component={SettingsScreen} />
         </Tab.Navigator>

@@ -13,6 +13,7 @@ import {
 import {
   getStartOfWeek, filterEntriesByRange, calculateTotalHours, calculatePay,
   formatHoursShort, formatMoney, getEntryDurationMs,
+  getPeriodDeductionsAmount, getPeriodReimbursementsAmount,
 } from '../utils/calculations';
 import { Settings, PayPeriodRecord, TimeEntry } from '../utils/types';
 
@@ -91,7 +92,9 @@ export default function HistoryScreen() {
       const key = start.getTime().toString();
       const periodEntries = filterEntriesByRange(entries, start, end);
       const totalHours = calculateTotalHours(periodEntries);
-      const summary = calculatePay(totalHours, s.hourlyRate, s.overtimeThreshold, s);
+      const dedAmt = getPeriodDeductionsAmount(s.deductions ?? [], start, weeksPerPeriod);
+      const reimbAmt = getPeriodReimbursementsAmount(s.reimbursements ?? [], start, weeksPerPeriod);
+      const summary = calculatePay(totalHours, s.hourlyRate, s.overtimeThreshold, s, dedAmt, reimbAmt);
       const extra = extraIncome[key] ?? { amount: 0, note: '' };
 
       return {
@@ -199,7 +202,19 @@ export default function HistoryScreen() {
                   </View>
                 </View>
 
-                {/* Net pay row */}
+                {/* Net pay rows */}
+                {period.summary.deductionsAmount > 0 && (
+                  <View style={s.netRow}>
+                    <Text style={[s.netLabel, { color: C.red }]}>− Deductions:</Text>
+                    <Text style={[s.netValue, { color: C.red }]}>−{formatMoney(period.summary.deductionsAmount)}</Text>
+                  </View>
+                )}
+                {period.summary.reimbursementsAmount > 0 && (
+                  <View style={s.netRow}>
+                    <Text style={[s.netLabel, { color: C.green }]}>+ Reimbursements:</Text>
+                    <Text style={[s.netValue, { color: C.green }]}>+{formatMoney(period.summary.reimbursementsAmount)}</Text>
+                  </View>
+                )}
                 <View style={s.netRow}>
                   <Text style={s.netLabel}>
                     After taxes ({totalTaxPct.toFixed(1)}%):

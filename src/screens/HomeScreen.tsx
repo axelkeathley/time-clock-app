@@ -14,6 +14,7 @@ import {
   getStartOfDay, getEndOfDay, getStartOfWeek, getEndOfWeek,
   formatHoursShort, formatDuration, formatMoney,
   getEntryDurationMs, calculatePay, calculateStreak,
+  getPeriodDeductionsAmount, getPeriodReimbursementsAmount,
 } from '../utils/calculations';
 import { TimeEntry, Settings } from '../utils/types';
 
@@ -73,7 +74,9 @@ export default function HomeScreen() {
     periodEnd.setDate(periodEnd.getDate() + 7 * weeksPerPeriod - 1);
     periodEnd.setHours(23, 59, 59, 999);
     const periodHours = calculateTotalHours(filterEntriesByRange(entries, periodStart, periodEnd));
-    const pay = calculatePay(periodHours, s.hourlyRate, s.overtimeThreshold, s);
+    const dedAmt = getPeriodDeductionsAmount(s.deductions ?? [], periodStart, weeksPerPeriod);
+    const reimbAmt = getPeriodReimbursementsAmount(s.reimbursements ?? [], periodStart, weeksPerPeriod);
+    const pay = calculatePay(periodHours, s.hourlyRate, s.overtimeThreshold, s, dedAmt, reimbAmt);
     setPeriodEarnings(pay.grossPay);
   }
 
