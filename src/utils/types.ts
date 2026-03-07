@@ -1,12 +1,27 @@
+export interface BreakPeriod {
+  breakOut: number;        // Unix ms
+  breakIn: number | null;  // null = currently on break
+}
+
 export interface TimeEntry {
   id: string;
-  clockIn: number;   // Unix ms timestamp
-  clockOut: number | null; // null = currently clocked in
+  clockIn: number;
+  clockOut: number | null;
+  breaks: BreakPeriod[];
+  note?: string;
 }
 
 export interface Settings {
   hourlyRate: number;
   payPeriodType: 'weekly' | 'biweekly';
+  overtimeThreshold: number;       // hours/week before OT (default 40)
+  federalTaxRate: number;          // % e.g. 22
+  stateTaxRate: number;            // % e.g. 5
+  ficaTaxRate: number;             // % default 7.65
+  workStartTime: string;           // "HH:MM"
+  workEndTime: string;             // "HH:MM"
+  workDays: number[];              // 0=Sun … 6=Sat
+  notificationsEnabled: boolean;
 }
 
 export interface PaySummary {
@@ -15,7 +30,10 @@ export interface PaySummary {
   totalHours: number;
   regularPay: number;
   overtimePay: number;
-  totalPay: number;
+  grossPay: number;
+  totalPay: number;    // alias for grossPay (backward compat)
+  taxAmount: number;
+  netPay: number;
 }
 
 export interface PayPeriodRecord {
@@ -24,4 +42,6 @@ export interface PayPeriodRecord {
   entries: TimeEntry[];
   summary: PaySummary;
   hourlyRate: number;
+  extraIncome: number;
+  extraIncomeNote: string;
 }

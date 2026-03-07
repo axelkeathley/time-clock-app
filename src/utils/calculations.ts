@@ -1,7 +1,17 @@
-import { TimeEntry, PaySummary } from './types';
+import { TimeEntry, PaySummary, Settings } from './types';
+
+// ── Duration helpers ──────────────────────────────────────────────────────────
+
+export function getBreaksDurationMs(entry: TimeEntry): number {
+  const now = Date.now();
+  return (entry.breaks ?? []).reduce((total, b) => {
+    return total + ((b.breakIn ?? now) - b.breakOut);
+  }, 0);
+}
 
 export function getEntryDurationMs(entry: TimeEntry): number {
-  return (entry.clockOut ?? Date.now()) - entry.clockIn;
+  const raw = (entry.clockOut ?? Date.now()) - entry.clockIn;
+  return Math.max(0, raw - getBreaksDurationMs(entry));
 }
 
 export function msToHours(ms: number): number {
@@ -26,6 +36,8 @@ export function formatMoney(amount: number): string {
   return `$${amount.toFixed(2)}`;
 }
 
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
 export function getStartOfDay(date: Date = new Date()): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -42,7 +54,7 @@ export function getEndOfDay(date: Date = new Date()): Date {
 export function getStartOfWeek(date: Date = new Date()): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   return d;
@@ -75,21 +87,40 @@ export function calculateTotalHours(entries: TimeEntry[]): number {
   );
 }
 
-// Overtime = time and a half after 40 hours/week
-export function calculatePay(totalHours: number, hourlyRate: number): PaySummary {
-  const regularHours = Math.min(totalHours, 40);
-  const overtimeHours = Math.max(0, totalHours - 40);
+// ── Pay + tax calculation ─────────────────────────────────────────────────────
+
+export function calculatePay(
+  totalHours: number,
+  hourlyRate: number,
+  overtimeThreshold = 40,
+  taxRates?: Pick<Settings, 'federalTaxRate' | 'stateTaxRate' | 'ficaTaxRate'>
+): PaySummary {
+  const regularHours = Math.min(totalHours, overtimeThreshold);
+  const overtimeHours = Math.max(0, totalHours - overtimeThreshold);
   const regularPay = regularHours * hourlyRate;
   const overtimePay = overtimeHours * hourlyRate * 1.5;
+  const grossPay = regularPay + overtimePay;
+
+  const totalTaxPct = taxRates
+    ? taxRates.federalTaxRate + taxRates.stateTaxRate + taxRates.ficaTaxRate
+    : 0;
+  const taxAmount = grossPay * (totalTaxPct / 100);
+  const netPay = grossPay - taxAmount;
+
   return {
     regularHours,
     overtimeHours,
     totalHours,
     regularPay,
     overtimePay,
-    totalPay: regularPay + overtimePay,
+    grossPay,
+    totalPay: grossPay,
+    taxAmount,
+    netPay,
   };
 }
+
+// ── Daily breakdown ───────────────────────────────────────────────────────────
 
 export function getDailyBreakdown(
   entries: TimeEntry[],
@@ -101,4 +132,40 @@ export function getDailyBreakdown(
     const dayEntries = filterEntriesByRange(entries, getStartOfDay(day), getEndOfDay(day));
     return { date: day, hours: calculateTotalHours(dayEntries) };
   });
+}
+
+// ── Streak ────────────────────────────────────────────────────────────────────
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+export function calculateStreak(entries: TimeEntry[]): number {
+  // Collect days that have at least one complete entry
+  const workedDays = new Set<string>();
+  entries.forEach(e => {
+    if (e.clockOut !== null) {
+      workedDays.add(dayKey(new Date(e.clockIn)));
+    }
+  });
+
+  let streak = 0;
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+
+  // If we haven't worked today yet, start checking from yesterday
+  if (!workedDays.has(dayKey(cursor))) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  for (let i = 0; i < 365; i++) {
+    if (workedDays.has(dayKey(cursor))) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
 }

@@ -28,7 +28,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [],
+    "plugins": [
+      ["expo-notifications", { "iosDisplayInForeground": true }]
+    ],
     "extra": {
       "eas": {
         "projectId": "cc7b2e0c-4e3f-42b5-94db-f7a3d2c3b058"
