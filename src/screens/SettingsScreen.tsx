@@ -1,13 +1,14 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Alert, ScrollView, Switch, Modal,
+  Alert, ScrollView, Switch, Modal, KeyboardAvoidingView,
+  Platform, Pressable, Keyboard,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loadSettings, saveSettings, clearAllData, DEFAULT_SETTINGS } from '../utils/storage';
 import { scheduleWorkNotifications } from '../utils/notifications';
-import { Settings, Deduction, Reimbursement } from '../utils/types';
+import { Settings, Deduction, Reimbursement, OccurrenceType } from '../utils/types';
 
 const C = {
   bg: '#0F172A', card: '#1E293B', primary: '#3B82F6',
@@ -16,6 +17,20 @@ const C = {
 };
 
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const OCCURRENCE_OPTIONS: { value: OccurrenceType; label: string }[] = [
+  { value: 'every-paycheck', label: 'Every Paycheck' },
+  { value: '1st-of-month',   label: '1st Paycheck of Month' },
+  { value: '2nd-of-month',   label: '2nd Paycheck of Month' },
+  { value: '3rd-of-month',   label: '3rd Paycheck of Month' },
+  { value: '4th-of-month',   label: '4th Paycheck of Month' },
+  { value: 'last-of-month',  label: 'Last Paycheck of Month' },
+  { value: 'once-yearly',    label: 'Once a Year (January)' },
+];
+
+function occurrenceLabel(o: OccurrenceType): string {
+  return OCCURRENCE_OPTIONS.find(x => x.value === o)?.label ?? o;
+}
 
 function Field({
   label, value, onChange, keyboardType = 'default', prefix, suffix,
@@ -78,13 +93,13 @@ export default function SettingsScreen() {
   const [addDedModal, setAddDedModal] = useState(false);
   const [newDedName, setNewDedName] = useState('');
   const [newDedAmount, setNewDedAmount] = useState('');
-  const [newDedOccurrence, setNewDedOccurrence] = useState<'every-paycheck' | 'first-of-month'>('every-paycheck');
+  const [newDedOccurrence, setNewDedOccurrence] = useState<OccurrenceType>('every-paycheck');
 
   // Add reimbursement modal state
   const [addReimbModal, setAddReimbModal] = useState(false);
   const [newReimbName, setNewReimbName] = useState('');
   const [newReimbAmount, setNewReimbAmount] = useState('');
-  const [newReimbOccurrence, setNewReimbOccurrence] = useState<'every-paycheck' | 'first-of-month'>('first-of-month');
+  const [newReimbOccurrence, setNewReimbOccurrence] = useState<OccurrenceType>('every-paycheck');
 
   useFocusEffect(useCallback(() => {
     loadSettings().then(s => {
@@ -256,7 +271,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={s.itemName}>{d.name}</Text>
                 <Text style={s.itemSub}>
-                  ${d.amount.toFixed(2)} · {d.occurrence === 'every-paycheck' ? 'every paycheck' : 'first paycheck of month'}
+                  ${d.amount.toFixed(2)} · {occurrenceLabel(d.occurrence)}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setDeductions(prev => prev.filter(x => x.id !== d.id))} style={s.removeBtn}>
@@ -281,7 +296,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={s.itemName}>{r.name}</Text>
                 <Text style={s.itemSub}>
-                  ${r.amount.toFixed(2)} · {r.occurrence === 'every-paycheck' ? 'every paycheck' : 'first paycheck of month'}
+                  ${r.amount.toFixed(2)} · {occurrenceLabel(r.occurrence)}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setReimbursements(prev => prev.filter(x => x.id !== r.id))} style={s.removeBtn}>
@@ -349,7 +364,9 @@ export default function SettingsScreen() {
 
       {/* Add Deduction Modal */}
       <Modal visible={addDedModal} transparent animationType="fade">
-        <View style={s.overlay}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={s.overlay} onPress={Keyboard.dismiss}>
+          <Pressable>
           <View style={s.modalCard}>
             <Text style={s.modalTitle}>Add Deduction</Text>
             <TextInput
@@ -373,17 +390,12 @@ export default function SettingsScreen() {
               />
             </View>
             <Text style={[s.hint, { marginBottom: 8 }]}>WHEN TO APPLY</Text>
-            <View style={s.segment}>
-              {(['every-paycheck', 'first-of-month'] as const).map(o => (
-                <TouchableOpacity key={o}
-                  style={[s.segBtn, newDedOccurrence === o && s.segBtnActive]}
-                  onPress={() => setNewDedOccurrence(o)}>
-                  <Text style={[s.segText, { fontSize: 12 }, newDedOccurrence === o && s.segTextActive]}>
-                    {o === 'every-paycheck' ? 'Every Paycheck' : 'First of Month'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {OCCURRENCE_OPTIONS.map(o => (
+              <TouchableOpacity key={o.value} style={s.radioRow} onPress={() => setNewDedOccurrence(o.value)}>
+                <View style={[s.radioCircle, newDedOccurrence === o.value && s.radioCircleActive]} />
+                <Text style={[s.radioLabel, newDedOccurrence === o.value && { color: C.text }]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
             <View style={s.modalBtns}>
               <TouchableOpacity style={s.modalCancel} onPress={() => setAddDedModal(false)}>
                 <Text style={s.modalCancelText}>Cancel</Text>
@@ -393,12 +405,16 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </Pressable>
+        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Add Reimbursement Modal */}
       <Modal visible={addReimbModal} transparent animationType="fade">
-        <View style={s.overlay}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={s.overlay} onPress={Keyboard.dismiss}>
+          <Pressable>
           <View style={s.modalCard}>
             <Text style={s.modalTitle}>Add Reimbursement</Text>
             <TextInput
@@ -422,17 +438,12 @@ export default function SettingsScreen() {
               />
             </View>
             <Text style={[s.hint, { marginBottom: 8 }]}>WHEN TO APPLY</Text>
-            <View style={s.segment}>
-              {(['every-paycheck', 'first-of-month'] as const).map(o => (
-                <TouchableOpacity key={o}
-                  style={[s.segBtn, newReimbOccurrence === o && s.segBtnActive]}
-                  onPress={() => setNewReimbOccurrence(o)}>
-                  <Text style={[s.segText, { fontSize: 12 }, newReimbOccurrence === o && s.segTextActive]}>
-                    {o === 'every-paycheck' ? 'Every Paycheck' : 'First of Month'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {OCCURRENCE_OPTIONS.map(o => (
+              <TouchableOpacity key={o.value} style={s.radioRow} onPress={() => setNewReimbOccurrence(o.value)}>
+                <View style={[s.radioCircle, newReimbOccurrence === o.value && s.radioCircleActive]} />
+                <Text style={[s.radioLabel, newReimbOccurrence === o.value && { color: C.text }]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
             <View style={s.modalBtns}>
               <TouchableOpacity style={s.modalCancel} onPress={() => setAddReimbModal(false)}>
                 <Text style={s.modalCancelText}>Cancel</Text>
@@ -442,7 +453,9 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </Pressable>
+        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -503,4 +516,11 @@ const s = StyleSheet.create({
   modalCancelText: { color: C.muted, fontSize: 16, fontWeight: '600' },
   modalConfirm: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center', backgroundColor: C.primary },
   modalConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  radioRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 10 },
+  radioCircle: {
+    width: 18, height: 18, borderRadius: 9,
+    borderWidth: 2, borderColor: C.muted, backgroundColor: 'transparent',
+  },
+  radioCircleActive: { borderColor: C.primary, backgroundColor: C.primary },
+  radioLabel: { color: C.muted, fontSize: 14, fontWeight: '500' },
 });

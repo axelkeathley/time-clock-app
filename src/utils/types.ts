@@ -11,18 +11,30 @@ export interface TimeEntry {
   note?: string;
 }
 
+export type OccurrenceType =
+  | 'every-paycheck'
+  | '1st-of-month'
+  | '2nd-of-month'
+  | '3rd-of-month'
+  | '4th-of-month'
+  | 'last-of-month'
+  | 'once-yearly'
+  // legacy values kept for backward compat with stored data
+  | 'first-of-month'
+  | 'twice-monthly';
+
 export interface Deduction {
   id: string;
   name: string;
   amount: number;
-  occurrence: 'every-paycheck' | 'first-of-month';
+  occurrence: OccurrenceType;
 }
 
 export interface Reimbursement {
   id: string;
   name: string;
   amount: number;
-  occurrence: 'every-paycheck' | 'first-of-month';
+  occurrence: OccurrenceType;
 }
 
 export interface Settings {

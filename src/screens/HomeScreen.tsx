@@ -57,7 +57,7 @@ export default function HomeScreen() {
     setWeekHours(calculateTotalHours(
       filterEntriesByRange(entries, getStartOfWeek(now), getEndOfWeek(now))
     ));
-    setStreak(calculateStreak(entries));
+    setStreak(calculateStreak(entries, s.workDays));
 
     // Current pay period earnings
     const weeksPerPeriod = s.payPeriodType === 'biweekly' ? 2 : 1;

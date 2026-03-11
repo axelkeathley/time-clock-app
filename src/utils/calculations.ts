@@ -1,4 +1,4 @@
-import { TimeEntry, PaySummary, Settings, Deduction, Reimbursement } from './types';
+import { TimeEntry, PaySummary, Settings, Deduction, Reimbursement, OccurrenceType } from './types';
 
 // ── Duration helpers ──────────────────────────────────────────────────────────
 
@@ -89,10 +89,43 @@ export function calculateTotalHours(entries: TimeEntry[]): number {
 
 // ── Deductions / Reimbursements helpers ───────────────────────────────────────
 
-// A "first of month" item applies when the period start date falls within the
-// first (weeksPerPeriod * 7) days of the calendar month.
-function isFirstPeriodOfMonth(periodStart: Date, weeksPerPeriod: number): boolean {
-  return periodStart.getDate() <= weeksPerPeriod * 7;
+// Returns 0-based index of this period within its calendar month (0 = 1st, 1 = 2nd, etc.)
+function getPeriodIndexInMonth(periodStart: Date, weeksPerPeriod: number): number {
+  let index = 0;
+  const cursor = new Date(periodStart);
+  cursor.setDate(cursor.getDate() - weeksPerPeriod * 7);
+  while (
+    cursor.getMonth() === periodStart.getMonth() &&
+    cursor.getFullYear() === periodStart.getFullYear()
+  ) {
+    index++;
+    cursor.setDate(cursor.getDate() - weeksPerPeriod * 7);
+  }
+  return index;
+}
+
+// A "last of month" item applies when the next period would start in a different month.
+function isLastPeriodOfMonth(periodStart: Date, weeksPerPeriod: number): boolean {
+  const nextPeriodStart = new Date(periodStart);
+  nextPeriodStart.setDate(nextPeriodStart.getDate() + weeksPerPeriod * 7);
+  return nextPeriodStart.getMonth() !== periodStart.getMonth();
+}
+
+function occurrenceApplies(occurrence: OccurrenceType, periodStart: Date, weeksPerPeriod: number): boolean {
+  const idx = getPeriodIndexInMonth(periodStart, weeksPerPeriod);
+  switch (occurrence) {
+    case 'every-paycheck':  return true;
+    case '1st-of-month':    return idx === 0;
+    case '2nd-of-month':    return idx === 1;
+    case '3rd-of-month':    return idx === 2;
+    case '4th-of-month':    return idx === 3;
+    case 'last-of-month':   return isLastPeriodOfMonth(periodStart, weeksPerPeriod);
+    case 'once-yearly':     return periodStart.getMonth() === 0 && idx === 0;
+    // legacy values
+    case 'first-of-month':  return idx === 0;
+    case 'twice-monthly':   return idx === 0 || isLastPeriodOfMonth(periodStart, weeksPerPeriod);
+    default:                return false;
+  }
 }
 
 export function getPeriodDeductionsAmount(
@@ -100,12 +133,8 @@ export function getPeriodDeductionsAmount(
   periodStart: Date,
   weeksPerPeriod: number
 ): number {
-  const firstOfMonth = isFirstPeriodOfMonth(periodStart, weeksPerPeriod);
-  return deductions.reduce((sum, d) => {
-    if (d.occurrence === 'every-paycheck') return sum + d.amount;
-    if (d.occurrence === 'first-of-month' && firstOfMonth) return sum + d.amount;
-    return sum;
-  }, 0);
+  return deductions.reduce((sum, d) =>
+    occurrenceApplies(d.occurrence, periodStart, weeksPerPeriod) ? sum + d.amount : sum, 0);
 }
 
 export function getPeriodReimbursementsAmount(
@@ -113,12 +142,8 @@ export function getPeriodReimbursementsAmount(
   periodStart: Date,
   weeksPerPeriod: number
 ): number {
-  const firstOfMonth = isFirstPeriodOfMonth(periodStart, weeksPerPeriod);
-  return reimbursements.reduce((sum, r) => {
-    if (r.occurrence === 'every-paycheck') return sum + r.amount;
-    if (r.occurrence === 'first-of-month' && firstOfMonth) return sum + r.amount;
-    return sum;
-  }, 0);
+  return reimbursements.reduce((sum, r) =>
+    occurrenceApplies(r.occurrence, periodStart, weeksPerPeriod) ? sum + r.amount : sum, 0);
 }
 
 // ── Pay + tax calculation ─────────────────────────────────────────────────────
@@ -178,7 +203,7 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-export function calculateStreak(entries: TimeEntry[]): number {
+export function calculateStreak(entries: TimeEntry[], workDays?: number[]): number {
   // Collect days that have at least one complete entry
   const workedDays = new Set<string>();
   entries.forEach(e => {
@@ -191,12 +216,21 @@ export function calculateStreak(entries: TimeEntry[]): number {
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
 
-  // If we haven't worked today yet, start checking from yesterday
-  if (!workedDays.has(dayKey(cursor))) {
+  // If we haven't worked today yet (and today is a work day), start checking from yesterday
+  const todayIsWorkDay = !workDays || workDays.length === 0 || workDays.includes(cursor.getDay());
+  if (!workedDays.has(dayKey(cursor)) && todayIsWorkDay) {
+    cursor.setDate(cursor.getDate() - 1);
+  } else if (!todayIsWorkDay) {
     cursor.setDate(cursor.getDate() - 1);
   }
 
   for (let i = 0; i < 365; i++) {
+    const dayOfWeek = cursor.getDay();
+    // If this is not a scheduled work day, skip it without breaking the streak
+    if (workDays && workDays.length > 0 && !workDays.includes(dayOfWeek)) {
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
     if (workedDays.has(dayKey(cursor))) {
       streak++;
       cursor.setDate(cursor.getDate() - 1);
