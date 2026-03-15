@@ -104,6 +104,12 @@ export async function updateEntry(updated: TimeEntry): Promise<void> {
   await saveEntries(entries.map(e => e.id === updated.id ? updated : e));
 }
 
+export async function addManualEntry(entry: TimeEntry): Promise<void> {
+  const entries = await loadEntries();
+  const sorted = [...entries, entry].sort((a, b) => a.clockIn - b.clockIn);
+  await saveEntries(sorted);
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function loadSettings(): Promise<Settings> {

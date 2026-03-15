@@ -75,9 +75,10 @@ export function filterEntriesByRange(
 ): TimeEntry[] {
   const s = start.getTime();
   const e = end.getTime();
-  return entries.filter(entry =>
-    entry.clockIn < e && (entry.clockOut === null || entry.clockOut > s)
-  );
+  return entries.filter(entry => {
+    const clockOut = entry.clockOut ?? Date.now();
+    return entry.clockIn < e && clockOut > s;
+  });
 }
 
 export function calculateTotalHours(entries: TimeEntry[]): number {
